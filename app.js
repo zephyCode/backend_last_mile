@@ -10,7 +10,7 @@ app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/api/call', async (req, res) => {
-    const result = await scheduleCallsBasedOnLandingTime();
+    const result = await callPassengersRepeatedly();
     return res.json({
         status: result,
         message: 'Ok'

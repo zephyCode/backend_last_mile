@@ -156,6 +156,7 @@ const scheduleCallsBasedOnLandingTime = async () => {
       : rawTime;
 
     const landingDateTime = parseDateTime(arrivalDate, timeStr);
+    console.log(landingDateTime);
 
     if (!landingDateTime) {
       continue
@@ -168,8 +169,6 @@ const scheduleCallsBasedOnLandingTime = async () => {
       if (sid) {
         const status = await getFinalStatus(sid);
         arr.push({ status: status, receiver: contact });
-        // const res = await getUserDTMFResponse(sid);
-        // console.log("Pressed digit: " + res);
       }
       await delay(7000);
     }
