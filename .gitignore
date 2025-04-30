@@ -9,9 +9,6 @@ logs
 *.log
 npm-debug.log*
 
-# Excel files and other local data
-*.xlsx
-
 # OS files
 .DS_Store
 Thumbs.db
