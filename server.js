@@ -2,12 +2,26 @@ import fetch from 'node-fetch';
 import twilio from 'twilio';
 import reader from 'xlsx';
 import dotenv from 'dotenv';
+import axios from 'axios';
+import Papa from 'papaparse';
 dotenv.config();
 
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const arr = [];
+
+const fetchSheetData = async (url) => {
+  try {
+    const response = await axios.get(url);
+    const parsed = Papa.parse(response.data, { header: true });
+    return parsed.data;
+  } catch (error) {
+    console.error("Error fetching sheet data:", error.message);
+    return [];
+  }
+};
+
 
 const readFile = (path) => {
   const file = reader.readFile(path);
@@ -68,7 +82,7 @@ const makeIVRCall = async (caller, receiver) => {
 };
 
 const callPassengersRepeatedly = async () => {
-  const data = readFile('./PasssengerData.xlsx');
+  const data = await fetchSheetData(process.env.SHEET_URL);
 
   for (let i = 0; i < data.length; i++) {
     const contact = data[i].Passenger_Contact;
@@ -139,7 +153,7 @@ const cleanPhoneNumber = (number) => {
 // console.log(cleanPhoneNumber('a7500155011'));
 
 const scheduleCallsBasedOnLandingTime = async () => {
-  const data = readFile("./MOCK_DATAa.xlsx");
+  const data = await fetchSheetData(process.env.SHEET_URL);
   const currentTime = new Date();
 
   for (let i = 0; i < data.length; i++) {
