@@ -2,7 +2,8 @@ import { google } from 'googleapis';
 import { readFileSync } from 'fs';
 
 const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.JSON_DATA),
+  // credentials: JSON.parse(process.env.JSON_DATA),
+  keyFile: 'ivrsystem-458506-dc3def334de9.json',
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
