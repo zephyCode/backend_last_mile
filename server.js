@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 import twilio from 'twilio';
 import reader from 'xlsx';
 import dotenv from 'dotenv';
+import { getSheetData, updateSheetColumn } from './googleSheets.js';
 dotenv.config();
 
 
@@ -9,25 +10,67 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const arr = [];
 
-const readFile = (path) => {
-  const file = reader.readFile(path);
-  let data = [];
-  const sheets = file.SheetNames;
+// const readFile = (path) => {
+//   const file = reader.readFile(path);
+//   let data = [];
+//   const sheets = file.SheetNames;
 
-  // Logic for one sheet only for testing purposes.
-  const temp = reader.utils.sheet_to_json(file.Sheets[sheets[0]]);
-  temp.forEach((res) => data.push(res));
+//   // Logic for one sheet only for testing purposes.
+//   const temp = reader.utils.sheet_to_json(file.Sheets[sheets[0]]);
+//   temp.forEach((res) => data.push(res));
 
-  // Logic for multiple sheets in the excel file.
-  // for (let i = 0; i < sheets.length; i++) {
-  //   const temp = reader.utils.sheet_to_json(file.Sheets[sheets[i]]);
-  //   temp.forEach((res) => data.push(res));
-  // }
+//   // Logic for multiple sheets in the excel file.
+//   // for (let i = 0; i < sheets.length; i++) {
+//   //   const temp = reader.utils.sheet_to_json(file.Sheets[sheets[i]]);
+//   //   temp.forEach((res) => data.push(res));
+//   // }
+//   return data;
+// };
+
+const safeWriteFile = (workBook, path, retries = 5, delayMs = 1000) => {
+  return new Promise((resolve, reject) => {
+    const attempt = (count) => {
+      try {
+        reader.writeFile(workBook, path);
+        resolve();
+      } catch (err) {
+        if (count <= 0) {
+          reject(err);
+        } else {
+          console.warn(`Write failed, retrying... (${retries - count + 1})`);
+          setTimeout(() => attempt(count - 1), delayMs);
+        }
+      }
+    };
+    attempt(retries);
+  });
+};
+
+
+
+const readFile = async () => {
+  const values = await getSheetData('Sheet1!A1:G'); // Update range as needed
+  const headers = values[0];
+  const data = values.slice(1).map(row => {
+    const rowObj = {};
+    headers.forEach((header, index) => {
+      rowObj[header] = row[index];
+    });
+    return rowObj;
+  });
   return data;
 };
 
+const writeFile = async (col, rowCount, value) => {
+  const range = `Sheet1!${col}2:${col}${rowCount + 1}`;
+  const values = Array(rowCount).fill([value]);
+  await updateSheetColumn(range, values);
+};
+
+
+
 const getUserDTMFResponse = async (callSid) => {
-  const client = twilio(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN); 
+  const client = twilio(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
 
   try {
     const document = await client.sync
@@ -48,41 +91,55 @@ const makeIVRCall = async (caller, receiver) => {
   const accountSid = process.env.ACCOUNT_SID;
   const authToken = process.env.AUTH_TOKEN;
   const client = twilio(accountSid, authToken);
-  
+
+  let formattedReceiver = receiver;
+  if (!receiver.startsWith('+')) {
+    formattedReceiver = '+91' + receiver;
+  }
 
   try {
     const call = await client.calls.create({
       from: caller,
-      to: receiver,
+      to: formattedReceiver,
       url: "https://ivrcall-3848.twil.io/ivr-start",
       statusCallback: "https://ivrcall-3848.twil.io/ivr-status",
       statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
       statusCallbackMethod: "POST",
     });
-    console.log(`Call initiated to ${receiver} | SID: ${call.sid}`);
+    console.log(`Call initiated to ${formattedReceiver} | SID: ${call.sid}`);
     return call.sid;
   } catch (err) {
-    console.error(`Failed to call ${receiver}:`, err.message);
+    console.error(`Failed to call ${formattedReceiver}:`, err.message);
     return null;
   }
 };
 
-const callPassengersRepeatedly = async () => {
-  const data = readFile('./PasssengerData.xlsx');
 
+const callPassengersRepeatedly = async () => {
+  const data = await readFile(); 
   for (let i = 0; i < data.length; i++) {
-    const contact = data[i].Passenger_Contact;
+    const itr = data[i];
+    if (itr.Call_Attempt_Success == 'Yes') {
+      console.log(itr.Passenger_Name + ' is already called successfully...');
+      continue;
+    }
+    const contact = itr.Passenger_Contact;
     console.log(`Calling ${i + 1} number ${contact}...`);
     const sid = await makeIVRCall('+1908320-8102', contact);
     if (sid) {
       const status = await getFinalStatus(sid);
+      if (status === 'completed') {
+        await writeFile('G', data.length, 'Yes');
+      }
       arr.push({ status: status, receiver: contact });
     }
+    if (i === data.length - 1) break;
     await delay(15000);
   }
   console.log('All calls completed.');
   return arr;
 };
+
 
 
 const getFinalStatus = async (callSid) => {
